@@ -1,7 +1,7 @@
 // KidPix offline service worker.
 // Precaches every app asset so the app runs fully offline after the first load.
 // Handles HTTP Range requests from cache so <audio> sound effects work offline on iOS.
-const CACHE = 'kidpix-offline-v1';
+const CACHE = 'kidpix-offline-v2';
 const ASSETS = [
   './',
   'index.html',
@@ -369,7 +369,17 @@ self.addEventListener('fetch', (event) => {
     }
     if (cached) return cached;
 
-    // Not in cache: go to network, and cache same-origin successes for next time.
+    // Avoid the network entirely while offline: a failed connection attempt is
+    // what triggers iOS's "Turn off Airplane Mode" popup. Serve a graceful
+    // fallback instead of attempting (and failing) a real network request.
+    if (!self.navigator.onLine) {
+      if (request.mode === 'navigate') {
+        return (await caches.match('index.html')) || (await caches.match('./')) || new Response('', { status: 504 });
+      }
+      return new Response('', { status: 504, statusText: 'Offline' });
+    }
+
+    // Online but not in cache: fetch and cache same-origin successes for next time.
     try {
       const response = await fetch(request);
       const url = new URL(request.url);
